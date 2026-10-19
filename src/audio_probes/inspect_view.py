@@ -81,7 +81,8 @@ def _audio_section(clip, condition: str) -> str:
 
 def _meta_section(record: dict) -> str:
     rows = "".join(f"<tr><td>{html.escape(str(k))}</td><td>{html.escape(_fmt(v))}</td></tr>" for k, v in record.items())
-    return f"<section><h2>2. Metadata</h2><table>{rows}</table></section>"
+    return (f"<section><h2>2. Metadata</h2><p class=note>Measured on the clip as generated (raw), "
+            f"before any condition such as loudness normalisation.</p><table>{rows}</table></section>")
 
 
 def _probe_section(cfg: dict, condition: str, clip_id: str, record: dict) -> str:
