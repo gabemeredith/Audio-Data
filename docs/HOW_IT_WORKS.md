@@ -42,6 +42,57 @@ nothing is lost when Whisper looks only up to 8 kHz.
 r(lag) = sum_n x[n] x[n + lag] peaks when the lag equals one period, so
 f0 = sample_rate / best_lag. [`autocorr_f0`](../src/audio_probes/properties/pitch.py).
 
+### Source distance (the target): simulated rooms
+
+**Plain words.** Imagine clapping once in a room. The microphone hears the clap arrive
+directly, then a smear of echoes off the walls. That "click response" is the room impulse
+response (RIR). Any sound played at that spot in that room reaches the mic as the sound
+blended with its echoes, which is a convolution of the dry sound with the RIR. We build
+random box-shaped rooms, place a mic and a source d metres apart, compute the RIR, and
+convolve a dry sound (LibriSpeech speech or synthetic noise bursts; macOS `say` voices or
+tones as options) with it.
+
+Two things change as the source moves away:
+
+1. **Loudness falls.** Sound power spreads over a sphere of area 4 pi d^2, so power falls as
+   1 / d^2 and amplitude as 1 / d: every doubling of distance is 6 dB quieter. We keep
+   one fixed gain for all clips, so the raw clips really do get quieter with distance.
+2. **The room takes over.** The direct sound weakens with distance but the diffuse reverb
+   in a room is roughly the same everywhere, so far sources sound more echoey. The
+   **direct-to-reverb ratio** (DRR) measures this.
+
+The `loudness_normalized` condition rescales every clip to -20 dBFS, which deletes cue 1.
+Whatever the probe still finds there must come from cue 2 or other subtler changes.
+
+**Math.**
+
+- *Image-source method.* A reflection off a wall sounds exactly like a second source
+  mirrored behind that wall. Mirroring the mirrors gives every multi-bounce path. The RIR
+  is a sum of delayed, scaled clicks, one per image source i at distance r_i that bounced
+  n_i times off walls with energy absorption a:
+  `h(t) = sum_i (1 - a)^(n_i / 2) / r_i * delta(t - r_i / c)`, with c = 343 m/s. We keep
+  images up to `max_order` bounces.
+- *Inverse-square law.* The 1 / r_i factor above (amplitude), i.e. 1 / r^2 in power.
+- *DRR.* With n_d the sample where the direct sound arrives and a +-2.5 ms window w:
+  `DRR = 10 log10( sum_{|n - n_d| <= w} h[n]^2 / sum_{n > n_d + w} h[n]^2 )` dB.
+- *Reverb time* (stored as metadata). Sabine: `RT60 = 0.161 V / (S a)` seconds.
+- *Mic signal.* `y = g * (x conv h) + noise`, with one fixed g for every clip and a fixed
+  -85 dBFS noise floor (so a far, quiet source sinks toward the noise).
+
+**Code.** [`simulate_rir`, `direct_to_reverb_db`, `place_pair`, `sabine_rt60`, `render_clip`,
+`Distance.plan`](../src/audio_probes/properties/distance.py). Sanity tests in
+[`tests/test_distance.py`](../tests/test_distance.py) check that DRR falls with distance
+(averaged over placements in one room, and as a rank correlation across random rooms),
+that the direct sound arrives at sample n_d, and that raw loudness falls with distance.
+
+**Grouping.** Rooms and sources are dealt into 10 blocks and a clip only pairs a room and
+source from the same block, so the grouped split can hold out whole blocks: test rooms and
+test speakers are never heard in training.
+
+**Hand-crafted baseline.** RMS level plus the DRR measured from the true RIR. The DRR is an
+*oracle* (a real device would have to estimate it from the audio alone), so this line is
+a generous reference, not a fair competitor.
+
 ### Energy above 8 kHz (negative control)
 
 **Plain words.** Whisper only ever sees audio at 16 kHz, which can only describe frequencies

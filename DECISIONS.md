@@ -63,3 +63,29 @@ Simpler option wins by default. Newest at the bottom.
   not usable. No debugging was needed.
 - The label is the level we set; the clip metadata also stores the level measured at
   48 kHz (they agree within 0.5 dB, tested) and the 7.5-8 kHz level after resampling.
+
+## Distance generator (milestone 3)
+
+- **pyroomacoustics RIRs are scaled 1/r, not 1/(4 pi r).** Measured: the direct peak times
+  d is about 0.8 at 1, 2 and 4 m. The fixed gain is set so the direct sound of a 1 m source
+  is at `level_at_1m_dbfs` = -35 dBFS. With -30 or louder, close noise bursts in live rooms
+  clipped; at -35 the loudest of 2000 clips peaks at 0.37 and none clip.
+- **"SNR" knob is an absolute noise floor** (`noise_floor_dbfs`, -85 dBFS), not an SNR
+  relative to each clip. A relative SNR would hand the probe the clip's loudness for free in
+  the raw condition and blur the loudness cue. Far, quiet clips do approach the floor, as
+  they would with a real mic.
+- **Rooms that cannot fit the distance.** If a sampled distance does not fit in the block's
+  current room after 300 placement tries, that clip gets its own fresh room (same block).
+  Large distances therefore lean slightly toward large rooms, which is physical.
+- **Grouping** uses 10 blocks; each block owns 4 LibriSpeech speakers and 4 noise-burst
+  patterns, plus its own rooms (4 clips per room). Source id for speech = speaker, stricter
+  than per-utterance. Result: 546 rooms, 80 sources, 10 connected components, test = 2
+  whole blocks (400 clips).
+- **DRR sanity test** averages 12 random placements per distance in one room. Single
+  placements are not strictly monotonic (a wall just behind the source adds an early
+  reflection inside the 2.5 ms direct window), which is real acoustics, not a bug.
+- **Source types:** default `[speech, noise]` (50/50). `say` (macOS text-to-speech) and
+  `tone` are also available, e.g. `data.source_types=[say,noise]` needs no download.
+- **Hand-crafted baseline uses the oracle DRR** from the true RIR plus RMS. Blind DRR
+  estimation from audio is a research problem of its own; the spec did not say which, and
+  the oracle is the simpler option. It is labelled "oracle" everywhere it appears.
