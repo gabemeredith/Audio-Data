@@ -3,6 +3,7 @@
     uv run python -m audio_probes <stage> --property <name> [--condition <c>] [key.sub=value ...]
 
 Stages: data, embed, probe, llm, report, inspect, all, show-config.
+Mac helpers: predict --file <audio file>, play --clip <id> [--boost-db 20].
 """
 
 from __future__ import annotations
@@ -44,13 +45,15 @@ def run_stage(stage: str, cfg: dict, conditions: list[str]) -> None:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="audio_probes", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("stage", choices=[*STAGES, "all", "inspect", "show-config"])
+    parser.add_argument("stage", choices=[*STAGES, "all", "inspect", "show-config", "predict", "play"])
     parser.add_argument("--property", "-p", default="all",
                         help=f"one of {PROPERTY_NAMES} or 'all'")
     parser.add_argument("--condition", "-c", default=None,
                         help="limit to one condition (default: all conditions in the config)")
     parser.add_argument("--clip", help="clip id, for the inspect stage")
     parser.add_argument("--run", help="results run hash, for inspect (default: latest)")
+    parser.add_argument("--file", help="any audio file, for predict")
+    parser.add_argument("--boost-db", type=float, default=0.0, help="playback gain for play")
     parser.add_argument("overrides", nargs="*", help="config overrides like probe.alpha=10")
     args = parser.parse_args(argv)
 
@@ -66,6 +69,13 @@ def main(argv: list[str] | None = None) -> None:
                 parser.error("inspect needs --clip <id>")
             for condition in conditions:
                 inspect_run(cfg, condition, args.clip, args.run)
+        elif args.stage in ("predict", "play"):
+            from audio_probes.predict import play_clip, run_predict
+            for condition in conditions:
+                if args.stage == "predict":
+                    run_predict(cfg, condition, args.file or parser.error("predict needs --file <path>"))
+                else:
+                    play_clip(cfg, condition, args.clip or parser.error("play needs --clip <id>"), args.boost_db)
         elif args.stage == "all":
             for stage in PIPELINE:
                 run_stage(stage, cfg, conditions)

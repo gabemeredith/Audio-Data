@@ -11,12 +11,14 @@ PROPERTY ?= all
 CONDITION ?=
 CLIP ?=
 RUN ?=
+FILE ?=
+BOOST ?= 0
 
 RUN_CMD := uv run python -m audio_probes
-OVERRIDES := $(filter-out PROPERTY=% CONDITION=% CLIP=% RUN=%,$(MAKEOVERRIDES))
+OVERRIDES := $(filter-out PROPERTY=% CONDITION=% CLIP=% RUN=% FILE=% BOOST=%,$(MAKEOVERRIDES))
 COND_FLAG := $(if $(CONDITION),--condition $(CONDITION),)
 
-.PHONY: all data embed probe llm report inspect test config download-librispeech
+.PHONY: all data embed probe llm report inspect predict play test config download-librispeech
 
 all: data embed probe llm report
 
@@ -25,6 +27,15 @@ data embed probe llm report:
 
 inspect:
 	$(RUN_CMD) inspect --property $(PROPERTY) $(COND_FLAG) --clip $(CLIP) $(if $(RUN),--run $(RUN),) $(OVERRIDES)
+
+# Mac helpers (no microphone needed):
+#   make predict PROPERTY=pitch FILE=/System/Library/Sounds/Glass.aiff
+#   make play PROPERTY=distance CONDITION=raw CLIP=distance_00042 BOOST=20
+predict:
+	$(RUN_CMD) predict --property $(PROPERTY) $(COND_FLAG) --file "$(FILE)" $(OVERRIDES)
+
+play:
+	$(RUN_CMD) play --property $(PROPERTY) $(COND_FLAG) --clip $(CLIP) --boost-db $(BOOST) $(OVERRIDES)
 
 config:
 	$(RUN_CMD) show-config --property $(PROPERTY) $(OVERRIDES)

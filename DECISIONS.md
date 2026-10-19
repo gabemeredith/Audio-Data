@@ -34,3 +34,16 @@ Simpler option wins by default. Newest at the bottom.
   split, probe, LLM). The results folder is `results/<property>/<condition>/<run_hash>/`
   and `results/<property>/<condition>/latest` points at the newest run. The fully
   resolved config is saved as `config.yaml` in every cache and results folder.
+
+## Mac audio helpers (added on request, mid-run)
+
+- Gabe asked to be able to use macOS audio instead of speaking into the mic (working in a
+  library). I read that as "let me feed in sounds already on my Mac and listen on
+  headphones". Added:
+  - `make predict PROPERTY=pitch FILE=/System/Library/Sounds/Glass.aiff` runs any audio
+    file (decoded by ffmpeg, so aiff/wav/m4a/mp3) through Whisper and the trained probes
+    and prints each layer's guess. Probes are saved as `models.pkl` for this.
+  - `make play PROPERTY=... CLIP=... BOOST=20` plays a generated clip with `afplay`.
+  - The inspect page already has an in-browser player with a x10 boost button.
+  - The distance property can use macOS text-to-speech (`say`) voices as dry sources
+    (`data.source_types=[say]`), so it runs with no LibriSpeech download.

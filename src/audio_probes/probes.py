@@ -9,12 +9,14 @@ Regularisation strength is chosen by grouped K-fold cross-validation on the TRAI
 Output, under data/probes/<property>/<condition>/<probe_hash>/:
     results.json            metrics per layer + chance + hand-crafted baseline
     predictions.npz         per-layer predictions for every clip (train ones are in-sample)
+    models.pkl              the fitted (regressor, classifier) per layer
     plots/scatter_layer_XX.png   predicted vs true, and residuals
 """
 
 from __future__ import annotations
 
 import json
+import pickle
 
 import numpy as np
 from scipy.stats import spearmanr
@@ -127,7 +129,7 @@ def fit_probe_pair(X: np.ndarray, y: np.ndarray, train: np.ndarray, groups: np.n
     C_grid = [pc["logistic_C"]] if pc["logistic_C"] is not None else pc["logistic_Cs"]
     C = grouped_cv_pick(lambda c: make_classifier(pc, c), C_grid, Xtr, bins[train], gtr, pc["cv_folds"], accuracy)
     clf = make_classifier(pc, C).fit(Xtr, bins[train])
-    return {"z_pred": reg.predict(X), "bin_pred": clf.predict(X), "alpha": alpha, "C": C}
+    return {"z_pred": reg.predict(X), "bin_pred": clf.predict(X), "alpha": alpha, "C": C, "models": (reg, clf)}
 
 
 def score(y, fit, test, cfg) -> dict:
@@ -166,12 +168,13 @@ def run(cfg: dict, condition: str) -> None:
     y = np.array([r["label"] for r in records], dtype=float)
     layer_ids = list(range(len(layers))) if cfg["encoder"]["layers"] == "all" else list(cfg["encoder"]["layers"])
 
-    per_layer, z_preds, bin_preds = {}, [], []
+    per_layer, z_preds, bin_preds, models = {}, [], [], {}
     for layer_id, X in zip(layer_ids, layers):
         fit = fit_probe_pair(X, y, train, groups, cfg)
         per_layer[f"layer_{layer_id:02d}"] = score(y, fit, test, cfg)
         z_preds.append(fit["z_pred"])
         bin_preds.append(fit["bin_pred"])
+        models[int(layer_id)] = fit["models"]
         m = per_layer[f"layer_{layer_id:02d}"]
         print(f"[probe] {cfg['property']}/{condition} layer {layer_id:2d}: R2={m['r2']:.3f} "
               f"rho={m['spearman']:.3f} MAE={m['mae']:.3g} acc4={m['acc4']:.3f} (alpha={m['alpha']:g}, C={m['C']:g})")
@@ -189,6 +192,8 @@ def run(cfg: dict, condition: str) -> None:
     is_test[test] = True
     np.savez(out / "predictions.npz", ids=np.array(ids), y=y, z_pred=np.stack(z_preds),
              bin_pred=np.stack(bin_preds), is_test=is_test, layer_ids=np.array(layer_ids))
+    with open(out / "models.pkl", "wb") as f:  # fitted probes, reused by `predict`
+        pickle.dump(models, f)
     write_scatter_plots(cfg, y, np.stack(z_preds), test, layer_ids, per_layer, out / "plots")
     save_resolved_config({**cfg, "condition": condition}, out / "config.yaml")
     (out / "DONE").write_text("ok\n")
