@@ -1,0 +1,75 @@
+seed: 0
+conditions:
+- raw
+data:
+  n_clips: 2000
+  duration_s: 5.0
+  sr: 16000
+  normalize_dbfs: -20.0
+  workers: 8
+  f0_range_hz:
+  - 100.0
+  - 1000.0
+  max_harmonic_hz: 7500.0
+  level_dbfs_range:
+  - -35.0
+  - -15.0
+  harmonic_decay_range:
+  - 0.0
+  - 2.0
+  noise_floor_dbfs: -70.0
+split:
+  test_frac: 0.2
+encoder:
+  name: whisper
+  size: small
+  layers: all
+  pooling: mean
+  first_n_frames: 50
+  batch_size: 16
+  device: auto
+probe:
+  type: ridge
+  alpha: null
+  alphas:
+  - 0.01
+  - 0.1
+  - 1.0
+  - 10.0
+  - 100.0
+  - 1000.0
+  - 10000.0
+  - 100000.0
+  cv_folds: 5
+  label_transform: log
+  bin_edges:
+  - 177.8
+  - 316.2
+  - 562.3
+  logistic_C: null
+  logistic_Cs:
+  - 0.0001
+  - 0.001
+  - 0.01
+  - 0.1
+  - 1.0
+  mlp_hidden: 256
+  mlp_alpha: 0.001
+llm:
+  backend: qwen2_audio
+  model: Qwen/Qwen2-Audio-7B-Instruct
+  allow_download: false
+  device: auto
+  temperature: 0.0
+  max_new_tokens: 24
+  n_test_clips: 400
+  prompts:
+    numeric: Estimate the fundamental frequency (pitch) of this sound in Hz. Answer
+      with a number only.
+    choice: 'What is the pitch (fundamental frequency) of this sound? Choose one:
+      (A) below 178 Hz, (B) 178 to 316 Hz, (C) 316 to 562 Hz, (D) above 562 Hz. Answer
+      with the letter only.'
+artifacts:
+  spectrograms: true
+property: pitch
+condition: raw
