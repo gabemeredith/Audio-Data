@@ -47,3 +47,19 @@ Simpler option wins by default. Newest at the bottom.
   - The inspect page already has an in-browser player with a x10 boost button.
   - The distance property can use macOS text-to-speech (`say`) voices as dry sources
     (`data.source_types=[say]`), so it runs with no LibriSpeech download.
+
+## High-band control (milestone 2)
+
+- **Resampler = ffmpeg's default**, invoked the same way openai-whisper's `load_audio`
+  does (`ffmpeg -ar 16000`), because the spec says "exactly as Whisper's preprocessing
+  does". `data.resampler=scipy` switches to `scipy.signal.resample_poly`.
+- **The resampler is not a perfect wall.** Measured: a -10 dBFS band at 9-15 kHz leaves a
+  residue of about -56 dBFS below 8 kHz with ffmpeg (-57 with scipy), i.e. about 46 dB of
+  attenuation, spread fairly evenly across 0-8 kHz. The test asserts at least 40 dB.
+- **Result: no leakage reached the probes.** Every layer R^2 is between -0.005 and 0.000,
+  and 4-bin accuracy is 0.22 to 0.27 against a chance rate of 0.23. The hand-crafted
+  baseline (overall level and 7.5-8 kHz level) also fails (R^2 -0.001). The residue sits
+  20 to 50 dB under the low-band content and near the -70 dBFS noise floor, so it is
+  not usable. No debugging was needed.
+- The label is the level we set; the clip metadata also stores the level measured at
+  48 kHz (they agree within 0.5 dB, tested) and the 7.5-8 kHz level after resampling.

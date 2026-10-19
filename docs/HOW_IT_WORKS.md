@@ -42,6 +42,24 @@ nothing is lost when Whisper looks only up to 8 kHz.
 r(lag) = sum_n x[n] x[n + lag] peaks when the lag equals one period, so
 f0 = sample_rate / best_lag. [`autocorr_f0`](../src/audio_probes/properties/pitch.py).
 
+### Energy above 8 kHz (negative control)
+
+**Plain words.** Whisper only ever sees audio at 16 kHz, which can only describe frequencies
+up to 8 kHz. So we hide a fact *above* 8 kHz: we build each clip at 48 kHz, add a hiss
+between 9 and 15 kHz at a random loudness (the label), then shrink the clip to 16 kHz the
+same way Whisper's loader does. The hiss should be gone. If a probe could still guess its
+loudness, information is leaking somewhere, either through an imperfect resampler or a bug
+that lets the label sneak into the features.
+
+**Math.** Band-limited noise: take white noise, FFT it, zero every bin outside 9 to 15 kHz,
+inverse FFT. Its level is measured with Parseval's theorem, mean(x_band^2) =
+2 * sum_{k in band} |X_k|^2 / n^2. Resampling 48 kHz to 16 kHz low-pass filters at 8 kHz
+and keeps every third sample; a real filter only *attenuates* the band (we measured about
+46 dB), it does not remove it completely.
+
+**Code.** [`HighBand.generate`](../src/audio_probes/properties/highband.py),
+[`band_limited_noise`, `band_level_dbfs`, `resample_like_whisper`](../src/audio_probes/audio.py).
+
 ### Levels in dB
 
 Loudness is measured as RMS (root mean square, the typical size of the wave):

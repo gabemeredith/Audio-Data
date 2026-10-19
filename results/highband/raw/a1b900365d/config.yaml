@@ -1,0 +1,77 @@
+seed: 0
+conditions:
+- raw
+data:
+  n_clips: 2000
+  duration_s: 5.0
+  sr: 16000
+  normalize_dbfs: -20.0
+  workers: 8
+  source_sr: 48000
+  band_hz:
+  - 9000.0
+  - 15000.0
+  band_level_dbfs_range:
+  - -60.0
+  - -10.0
+  base_level_dbfs_range:
+  - -35.0
+  - -15.0
+  base_max_hz: 7000.0
+  resampler: ffmpeg
+  noise_floor_dbfs: -70.0
+split:
+  test_frac: 0.2
+encoder:
+  name: whisper
+  size: small
+  layers: all
+  pooling: mean
+  first_n_frames: 50
+  batch_size: 16
+  device: auto
+probe:
+  type: ridge
+  alpha: null
+  alphas:
+  - 0.01
+  - 0.1
+  - 1.0
+  - 10.0
+  - 100.0
+  - 1000.0
+  - 10000.0
+  - 100000.0
+  cv_folds: 5
+  label_transform: linear
+  bin_edges:
+  - -47.5
+  - -35.0
+  - -22.5
+  logistic_C: null
+  logistic_Cs:
+  - 0.0001
+  - 0.001
+  - 0.01
+  - 0.1
+  - 1.0
+  mlp_hidden: 256
+  mlp_alpha: 0.001
+llm:
+  backend: qwen2_audio
+  model: Qwen/Qwen2-Audio-7B-Instruct
+  allow_download: false
+  device: auto
+  temperature: 0.0
+  max_new_tokens: 24
+  n_test_clips: 400
+  prompts:
+    numeric: Estimate the level, in dB relative to full scale, of the sound energy
+      above 8 kHz in this recording. Answer with a number only.
+    choice: 'How loud is the high-frequency content above 8 kHz in this recording?
+      Choose one: (A) below -47.5 dBFS, (B) -47.5 to -35 dBFS, (C) -35 to -22.5 dBFS,
+      (D) above -22.5 dBFS. Answer with the letter only.'
+artifacts:
+  spectrograms: true
+property: highband
+condition: raw

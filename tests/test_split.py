@@ -38,7 +38,7 @@ def test_real_property_splits_are_clean():
     from audio_probes.config import load_config
     from audio_probes.properties import get_property
 
-    for name in ["pitch"]:
+    for name in ["pitch", "highband"]:
         cfg = load_config(name, ["data.n_clips=60", "data.source_types=[noise]", "data.max_order=3"])
         prop = get_property(cfg)
         clips = prop.generate(60, seed=0)
