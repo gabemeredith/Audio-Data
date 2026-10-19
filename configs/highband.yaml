@@ -1,0 +1,18 @@
+# Negative control: level of a 9-15 kHz noise band. Whisper resamples to 16 kHz,
+# so this band is removed before the model ever sees it. A probe that succeeds means leakage.
+data:
+  source_sr: 48000
+  band_hz: [9000.0, 15000.0]
+  band_level_dbfs_range: [-60.0, -10.0]   # the label
+  base_level_dbfs_range: [-35.0, -15.0]   # low-band content (tone + noise below base_max_hz)
+  base_max_hz: 7000.0
+  resampler: ffmpeg                       # ffmpeg (what openai-whisper does) / scipy
+  noise_floor_dbfs: -70.0
+
+probe:
+  bin_edges: [-47.5, -35.0, -22.5]       # 4 equal bins across -60..-10 dB
+
+llm:
+  prompts:
+    numeric: "Estimate the level, in dB relative to full scale, of the sound energy above 8 kHz in this recording. Answer with a number only."
+    choice: "How loud is the high-frequency content above 8 kHz in this recording? Choose one: (A) below -47.5 dBFS, (B) -47.5 to -35 dBFS, (C) -35 to -22.5 dBFS, (D) above -22.5 dBFS. Answer with the letter only."

@@ -1,0 +1,54 @@
+# Shared defaults. Each configs/<property>.yaml overrides what it needs.
+# Any key can be overridden from the command line, e.g.
+#   make probe PROPERTY=distance probe.alpha=10
+#   uv run python -m audio_probes probe --property pitch encoder.size=tiny
+
+seed: 0
+
+# Conditions are transforms applied to every clip before it reaches the encoder or LLM.
+# "raw" = as generated. "loudness_normalized" = RMS-normalised to data.normalize_dbfs.
+conditions: [raw]
+
+data:
+  n_clips: 2000
+  duration_s: 5.0
+  sr: 16000
+  normalize_dbfs: -20.0     # target level for the loudness_normalized condition
+  workers: 8                # processes used to render clips
+
+split:
+  test_frac: 0.2            # fraction of groups (not clips) held out for test
+
+encoder:
+  name: whisper
+  size: small               # tiny / base / small
+  layers: all               # "all" or a list of hidden-state indices, e.g. [0, 6, 12]
+  pooling: mean             # mean / max / first_n
+  first_n_frames: 50        # only used when pooling = first_n
+  batch_size: 16
+  device: auto              # auto / cpu / mps / cuda
+
+probe:
+  type: ridge               # ridge / mlp
+  alpha: null               # fixed ridge strength; null = pick from `alphas` by grouped CV
+  alphas: [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0]
+  cv_folds: 5
+  label_transform: linear   # linear / log  (R^2 is reported on this scale)
+  bin_edges: null           # edges for the 4-bin classifier, in label units (set per property)
+  logistic_C: null          # fixed inverse regularisation; null = pick from `logistic_Cs`
+  logistic_Cs: [0.0001, 0.001, 0.01, 0.1, 1.0]
+  mlp_hidden: 256           # only used when type = mlp
+  mlp_alpha: 0.001
+
+llm:
+  backend: qwen2_audio      # qwen2_audio / mock
+  model: Qwen/Qwen2-Audio-7B-Instruct
+  allow_download: false     # the model is ~16 GB; see DECISIONS.md
+  device: auto
+  temperature: 0.0
+  max_new_tokens: 24
+  n_test_clips: 400         # how many test clips to ask (null = all)
+  prompts: {}               # numeric / choice, set per property
+
+artifacts:
+  spectrograms: true        # write a log-mel PNG per clip

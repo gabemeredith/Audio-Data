@@ -1,0 +1,16 @@
+# Positive control: fundamental frequency of a harmonic tone. Whisper should encode it.
+data:
+  f0_range_hz: [100.0, 1000.0]   # sampled log-uniformly
+  max_harmonic_hz: 7500.0        # keep all partials below Whisper's 8 kHz Nyquist
+  level_dbfs_range: [-35.0, -15.0]
+  harmonic_decay_range: [0.0, 2.0]  # weight_k ~ uniform(0,1) * k^-decay
+  noise_floor_dbfs: -70.0
+
+probe:
+  label_transform: log
+  bin_edges: [177.8, 316.2, 562.3]  # 4 log-equal bins across 100-1000 Hz
+
+llm:
+  prompts:
+    numeric: "Estimate the fundamental frequency (pitch) of this sound in Hz. Answer with a number only."
+    choice: "What is the pitch (fundamental frequency) of this sound? Choose one: (A) below 178 Hz, (B) 178 to 316 Hz, (C) 316 to 562 Hz, (D) above 562 Hz. Answer with the letter only."

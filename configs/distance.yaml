@@ -1,0 +1,25 @@
+# Target: distance between sound source and microphone in a simulated shoebox room.
+conditions: [raw, loudness_normalized]
+
+data:
+  distance_range_m: [0.5, 10.0]           # sampled log-uniformly
+  room_size_range_m: [[4.0, 20.0], [3.0, 15.0], [2.5, 5.0]]   # length, width, height
+  absorption_range: [0.1, 0.7]            # wall energy absorption coefficient
+  max_order: 15                           # image-source reflection order
+  wall_margin_m: 0.3                      # keep mic and source this far from walls
+  source_types: [speech, noise]           # speech (LibriSpeech dev-clean) / noise / tone
+  librispeech_dir: data/librispeech/LibriSpeech/dev-clean
+  source_dbfs: -20.0                      # dry source level before the room
+  level_at_1m_dbfs: -30.0                 # direct-path level at 1 m (sets absolute loudness)
+  noise_floor_dbfs: -80.0                 # mic self-noise; absolute, so loudness still varies
+  n_groups: 10                            # rooms and sources are partitioned into this many blocks
+  clips_per_room: 4
+
+probe:
+  label_transform: log
+  bin_edges: [1.0, 3.0, 6.0]
+
+llm:
+  prompts:
+    numeric: "Estimate the distance in meters between the sound source and the microphone. Answer with a number only."
+    choice: "How far is the sound source from the microphone? Choose one: (A) less than 1 meter, (B) 1 to 3 meters, (C) 3 to 6 meters, (D) more than 6 meters. Answer with the letter only."
