@@ -64,7 +64,7 @@ def parse_number(text: str) -> float | None:
     if text is None:
         return None
     cleaned = text.replace(",", "")
-    rng = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|to|–)\s*(\d+(?:\.\d+)?)", cleaned)
+    rng = re.search(r"(-?\d+(?:\.\d+)?)\s*(?:to|–|-)\s*(-?\d+(?:\.\d+)?)", cleaned)
     if rng:
         return (float(rng.group(1)) + float(rng.group(2))) / 2
     match = _NUMBER.search(cleaned)
@@ -76,6 +76,8 @@ def parse_choice(text: str) -> int | None:
     if text is None:
         return None
     stripped = text.strip()
+    if re.fullmatch(r"\(?[abcdABCD]\)?\.?", stripped):  # a bare letter, any case
+        return CHOICE_LETTERS.index(stripped.strip("().").upper())
     match = re.match(r"^\(?([ABCD])\b", stripped)
     if not match:
         match = re.search(r"(?:answer(?: is)?:?\s*|\()([ABCD])\b", stripped, flags=re.IGNORECASE)
