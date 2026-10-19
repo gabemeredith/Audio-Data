@@ -89,3 +89,37 @@ Simpler option wins by default. Newest at the bottom.
 - **Hand-crafted baseline uses the oracle DRR** from the true RIR plus RMS. Blind DRR
   estimation from audio is a research problem of its own; the spec did not say which, and
   the oracle is the simpler option. It is labelled "oracle" everywhere it appears.
+
+## Distance results and two artifact checks (milestone 3)
+
+Main run (results `raw/5d3ae2fa5e`, `loudness_normalized/097b2bb322`), test = 400 clips
+from 2 held-out blocks of rooms and speakers:
+
+| condition | best layer | R^2 | Spearman | MAE | best 4-bin acc | baseline R^2 (RMS + oracle DRR) |
+|---|---|---|---|---|---|---|
+| raw | 4 | 0.928 | 0.963 | 0.66 m | 0.770 (layer 2) | 0.894 |
+| loudness_normalized | 4 | 0.851 | 0.927 | 0.89 m | 0.677 (layer 3) | 0.666 |
+
+Both curves rise to a peak at layers 2 to 5 and fall toward layer 12 (raw 0.79,
+normalized 0.68 at the last layer): the encoder keeps distance most linearly readable in
+its early-middle layers and partially discards it as it moves toward speech content.
+
+Before trusting the normalized number I checked two simulation artifacts:
+
+1. **Time of flight.** The simulated clip started with d / c seconds of near-silence
+   (up to 29 ms), which encodes distance in a way no real microphone could know.
+   Added `data.align_direct_path: true` (default) to trim it. Effect: tiny (raw 0.931 ->
+   0.928, normalized 0.855 -> 0.851), so Whisper was not leaning on it. Kept the fix anyway.
+2. **Noise floor smuggling loudness back in.** The mic noise floor is fixed in absolute
+   terms, so after loudness normalisation a far (originally quiet) clip has a relatively
+   louder hiss. Ablation with `data.noise_floor_dbfs=-200` (effectively no noise; results
+   `raw/593273a37b`, `loudness_normalized/382211f6a1`): raw 0.925 (unchanged), normalized
+   **0.778** (best layer 5). So about 0.07 R^2 of the normalized score came through the
+   noise floor. The remaining 0.78 is non-loudness information (reverberation, spectral
+   colouring) and still beats the oracle-DRR baseline (0.666). The main run keeps the -85
+   dBFS floor because real microphones have one; the ablation is the cleaner answer to "is
+   anything beyond loudness encoded?" and is reported next to it.
+
+Also: `batch_size`, `device` and `workers` no longer enter cache hashes (they change speed
+and memory, not results), and the default batch size is now 4 (~1.5 GB peak instead of ~3).
+Pre-alignment result folders were deleted to avoid confusion.

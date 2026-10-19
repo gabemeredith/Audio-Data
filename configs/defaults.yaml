@@ -25,7 +25,7 @@ encoder:
   layers: all               # "all" or a list of hidden-state indices, e.g. [0, 6, 12]
   pooling: mean             # mean / max / first_n
   first_n_frames: 50        # only used when pooling = first_n
-  batch_size: 16
+  batch_size: 4             # lower = less memory (~1.5 GB peak at 4); does not change results
   device: auto              # auto / cpu / mps / cuda
 
 probe:

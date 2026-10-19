@@ -245,3 +245,46 @@ p(k | x) = exp(s_k) / sum_j exp(s_j). Training minimises cross-entropy
   [`accuracy`](../src/audio_probes/probes.py).
 - **Chance**: always predict the training average (R^2 about 0) or the most common
   training bin. [`chance_scores`](../src/audio_probes/probes.py).
+
+---
+
+## 5. Asking an audio-LLM
+
+**Plain words.** The probes tell us what is *inside* Whisper's layers. An audio-LLM (a
+language model with an audio encoder, often Whisper-like, bolted on) has access to a
+similar encoder. The question is how much of that information it actually *reports* when
+asked in words. We play each test clip to the model and ask two questions: one wanting a
+number ("how many metres?") and one multiple choice with the same four bins the
+classification probe uses, so the scores line up exactly.
+
+**Details.**
+
+- Backend is pluggable ([`AudioLLM`](../src/audio_probes/llms/base.py)). The default,
+  [`QwenAudio`](../src/audio_probes/llms/qwen_audio.py), runs Qwen2-Audio-7B-Instruct
+  locally with greedy decoding (temperature 0). A [`MockLLM`](../src/audio_probes/llms/mock.py)
+  answers at random so the plumbing can be tested without the 16 GB download.
+- Answers are parsed by [`parse_number` and `parse_choice`](../src/audio_probes/properties/base.py):
+  first number in the reply (a range like "2-3" becomes its midpoint), or the letter A-D.
+- **Unparseable answers count as wrong.** A non-letter choice scores 0. A missing number (or a
+  non-positive one when the label is on a log scale) is replaced with the training median,
+  a chance-level guess. The unparseable rate is reported next to every LLM score.
+  [`score_answers`](../src/audio_probes/llm_eval.py).
+- Every prompt and raw answer is appended to `answers.jsonl` as it happens, so the run can be
+  interrupted and resumed and every answer can be audited. [`ask_all`](../src/audio_probes/llm_eval.py).
+
+---
+
+## 6. Comparing
+
+**Plain words.** One chart per property and condition. The blue curve is the probe's score at
+each layer: how much of the fact is linearly readable there. Flat horizontal lines give
+context: chance (what guessing gets), a hand-crafted baseline (what a few classic
+measurements get), and the audio-LLM (what the model says out loud). The distance between
+the top of the blue curve and the LLM line is the **richness lost**: information that is
+present in the encoder but does not come out in words.
+
+**Math.** best = max over layers of the probe's test R^2 (or accuracy);
+gap = best - LLM score, on the same test clips and the same metric.
+
+**Code.** [`plot_layer_curve`, `summary_markdown`](../src/audio_probes/report.py). Output:
+`results/<property>/<condition>/<run_hash>/{layer_curve.png, metrics.json, report.md}`.

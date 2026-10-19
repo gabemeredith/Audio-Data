@@ -73,11 +73,19 @@ def config_hash(obj: Any, length: int = 10) -> str:
 # ---- per-stage hashes: each one includes everything upstream of it ----------------
 
 def data_hash(cfg: dict) -> str:
-    return config_hash({"property": cfg["property"], "seed": cfg["seed"], "data": cfg["data"]})
+    return config_hash({"property": cfg["property"], "seed": cfg["seed"], "data": _result_knobs(cfg["data"])})
+
+
+# Knobs that change speed or memory but never the numbers produced; left out of cache keys.
+RUNTIME_ONLY = {"batch_size", "device", "workers"}
+
+
+def _result_knobs(section: dict) -> dict:
+    return {k: v for k, v in section.items() if k not in RUNTIME_ONLY}
 
 
 def embed_hash(cfg: dict, condition: str) -> str:
-    return config_hash({"data": data_hash(cfg), "condition": condition, "encoder": cfg["encoder"]})
+    return config_hash({"data": data_hash(cfg), "condition": condition, "encoder": _result_knobs(cfg["encoder"])})
 
 
 def split_hash(cfg: dict) -> str:
@@ -89,7 +97,7 @@ def probe_hash(cfg: dict, condition: str) -> str:
 
 
 def llm_hash(cfg: dict, condition: str) -> str:
-    return config_hash({"data": data_hash(cfg), "split": split_hash(cfg), "condition": condition, "llm": cfg["llm"]})
+    return config_hash({"data": data_hash(cfg), "split": split_hash(cfg), "condition": condition, "llm": _result_knobs(cfg["llm"])})
 
 
 def run_hash(cfg: dict, condition: str) -> str:

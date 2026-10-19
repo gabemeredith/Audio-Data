@@ -14,6 +14,7 @@ RUN ?=
 FILE ?=
 BOOST ?= 0
 
+export PYTHONUNBUFFERED := 1
 RUN_CMD := uv run python -m audio_probes
 OVERRIDES := $(filter-out PROPERTY=% CONDITION=% CLIP=% RUN=% FILE=% BOOST=%,$(MAKEOVERRIDES))
 COND_FLAG := $(if $(CONDITION),--condition $(CONDITION),)

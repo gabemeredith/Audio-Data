@@ -12,6 +12,7 @@ data:
   source_dbfs: -20.0                      # dry source level before the room
   level_at_1m_dbfs: -35.0                 # direct-path level at 1 m (sets absolute loudness; low enough that reverb never clips)
   noise_floor_dbfs: -85.0                 # mic self-noise; absolute, so loudness still varies
+  align_direct_path: true                 # trim the d/c delay so silence length cannot encode distance
   n_groups: 10                            # rooms and sources are partitioned into this many blocks
   clips_per_room: 4
 

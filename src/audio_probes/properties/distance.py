@@ -279,7 +279,11 @@ def render_clip(spec: dict) -> Clip:
     # The RIR already falls off as 1/d with gain ~1 at 1 m; this fixed gain puts the direct sound
     # at level_at_1m_dbfs for a source 1 m away, the same for every clip (so loudness carries distance).
     gain = db_to_amp(d["level_at_1m_dbfs"] - d["source_dbfs"])
-    wet = gain * fftconvolve(dry, rir)[:n]
+    # Drop the d / c propagation delay so every clip starts at the direct sound. Otherwise the
+    # length of the leading silence would encode distance (time of flight), which a real
+    # microphone cannot know because it never hears when the sound was emitted.
+    start = direct_index(spec["distance"], sr) if d.get("align_direct_path", True) else 0
+    wet = gain * fftconvolve(dry, rir)[start:start + n]
     wet = wet + db_to_amp(d["noise_floor_dbfs"]) * rng.standard_normal(n)
     peak = float(np.max(np.abs(wet)))
     audio = np.clip(wet, -1, 1).astype(np.float32)

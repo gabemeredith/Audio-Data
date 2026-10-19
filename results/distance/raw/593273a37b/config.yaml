@@ -1,0 +1,90 @@
+seed: 0
+conditions:
+- raw
+- loudness_normalized
+data:
+  n_clips: 2000
+  duration_s: 5.0
+  sr: 16000
+  normalize_dbfs: -20.0
+  workers: 8
+  distance_range_m:
+  - 0.5
+  - 10.0
+  room_size_range_m:
+  - - 4.0
+    - 20.0
+  - - 3.0
+    - 15.0
+  - - 2.5
+    - 5.0
+  absorption_range:
+  - 0.1
+  - 0.7
+  max_order: 15
+  wall_margin_m: 0.3
+  source_types:
+  - speech
+  - noise
+  librispeech_dir: data/librispeech/LibriSpeech/dev-clean
+  source_dbfs: -20.0
+  level_at_1m_dbfs: -35.0
+  noise_floor_dbfs: -200
+  align_direct_path: true
+  n_groups: 10
+  clips_per_room: 4
+split:
+  test_frac: 0.2
+encoder:
+  name: whisper
+  size: small
+  layers: all
+  pooling: mean
+  first_n_frames: 50
+  batch_size: 4
+  device: auto
+probe:
+  type: ridge
+  alpha: null
+  alphas:
+  - 0.01
+  - 0.1
+  - 1.0
+  - 10.0
+  - 100.0
+  - 1000.0
+  - 10000.0
+  - 100000.0
+  cv_folds: 5
+  label_transform: log
+  bin_edges:
+  - 1.0
+  - 3.0
+  - 6.0
+  logistic_C: null
+  logistic_Cs:
+  - 0.0001
+  - 0.001
+  - 0.01
+  - 0.1
+  - 1.0
+  mlp_hidden: 256
+  mlp_alpha: 0.001
+llm:
+  backend: qwen2_audio
+  model: Qwen/Qwen2-Audio-7B-Instruct
+  allow_download: false
+  device: auto
+  temperature: 0.0
+  max_new_tokens: 24
+  n_test_clips: 400
+  prompts:
+    numeric: Estimate the distance in meters between the sound source and the microphone.
+      Answer with a number only.
+    choice: 'How far is the sound source from the microphone? Choose one: (A) less
+      than 1 meter, (B) 1 to 3 meters, (C) 3 to 6 meters, (D) more than 6 meters.
+      Answer with the letter only.'
+artifacts:
+  spectrograms: true
+property: distance
+condition: raw
