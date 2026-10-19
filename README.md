@@ -68,6 +68,26 @@ the full resolved config saved alongside.
   `make inspect PROPERTY=distance CONDITION=raw CLIP=distance_00042` writes an HTML page
   with the audio, spectrogram, per-layer predictions, PCA positions and LLM answers.
 
+### Interactive lab (localhost)
+
+```bash
+make demo        # opens http://127.0.0.1:8770 ; Ctrl+C to stop
+```
+
+Needs `make all` first (it loads the trained probes). Keeps Whisper loaded, so it uses about
+1.5 GB of memory while it runs. Four tabs:
+
+- **Room lab:** sliders for distance, room size and wall absorption, a sound source
+  (LibriSpeech speaker, noise bursts, tone, or a macOS `say` voice), and a loudness-normalize
+  toggle. Every change re-simulates the room, plays the clip, and plots what each of the 13
+  layers predicts against the true distance. **Sweep** moves the source from 0.5 m to 10 m
+  in the same room and plots predicted vs true for any layer.
+- **Pitch lab** and **High-band lab:** the two controls, live. In the high-band lab the
+  layers should not follow the slider.
+- **Your Mac's sounds:** any `/System/Library/Sounds` file or an uploaded audio file.
+
+The server binds to 127.0.0.1 only and uses the Python standard library (no extra deps).
+
 ### No microphone needed
 
 ```bash

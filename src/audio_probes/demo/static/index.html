@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audio Probe Lab</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e2e0da;
+  --accent: #2f5bea; --truth: #d9480f; --good: #2b8a3e; --band: rgba(47, 91, 234, 0.06);
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+       color: var(--ink); background: var(--bg); }
+header { padding: 18px 24px 8px; }
+header h1 { margin: 0; font-size: 20px; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 820px; }
+nav { display: flex; gap: 6px; padding: 10px 24px 0; flex-wrap: wrap; }
+nav button { border: 1px solid var(--line); background: var(--panel); padding: 7px 14px; border-radius: 999px;
+             cursor: pointer; font: inherit; color: var(--ink); }
+nav button.on { background: var(--ink); color: white; border-color: var(--ink); }
+main { display: grid; grid-template-columns: 340px 1fr; gap: 16px; padding: 16px 24px 32px; }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.panel h2 { font-size: 15px; margin: 0 0 8px; }
+.panel h3 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.ctl { margin: 10px 0; }
+.ctl label { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.ctl label b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.ctl input[type=range] { width: 100%; }
+select, .btn { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: white; }
+select { width: 100%; }
+.btn { cursor: pointer; }
+.btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.hint { color: var(--muted); font-size: 13px; margin: 6px 0; }
+.results { display: grid; gap: 16px; }
+.spec { width: 100%; image-rendering: pixelated; border-radius: 6px; display: block; }
+audio { width: 100%; margin: 4px 0; }
+.stat { display: inline-block; margin: 2px 14px 2px 0; font-size: 13px; color: var(--muted); }
+.stat b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.err { background: #fff0ec; border: 1px solid #ffc9b9; color: #a3330c; padding: 8px 12px; border-radius: 6px; }
+.busy { opacity: .55; transition: opacity .15s; }
+svg text { font: 11px -apple-system, system-ui, sans-serif; fill: var(--muted); }
+.legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 5px; }
+table { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+td, th { padding: 2px 8px; border-bottom: 1px solid var(--line); text-align: right; }
+th { color: var(--muted); font-weight: 500; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Audio Probe Lab</h1>
+  <p>Build a sound, play it, and see what each of Whisper's 13 encoder layers "knows" about it.
+     Each layer has a tiny trained probe (a weighted sum) that reads one fact out of that layer.
+     Change a slider and the clip is re-made and re-measured in about a second.</p>
+</header>
+<nav id="tabs">
+  <button data-tab="distance" class="on">Room lab: distance</button>
+  <button data-tab="pitch">Pitch lab</button>
+  <button data-tab="highband">High-band lab</button>
+  <button data-tab="file">Your Mac's sounds</button>
+</nav>
+<main>
+  <section class="panel" id="controls"></section>
+  <section class="results">
+    <div class="panel" id="clipPanel">
+      <h2>The clip</h2>
+      <div id="clipBody" class="hint">Loading the model...</div>
+    </div>
+    <div class="panel">
+      <h2 id="chartTitle">What each layer thinks</h2>
+      <div class="legend" id="legend"></div>
+      <div id="chart"></div>
+      <p class="hint" id="chartHint"></p>
+      <details><summary class="hint">Numbers per layer</summary><div id="table"></div></details>
+    </div>
+    <div class="panel hidden" id="sweepPanel">
+      <h2>Sweep: same room and source, moved from 0.5 m to 10 m</h2>
+      <div class="row"><span class="hint">Layer shown:</span><select id="sweepLayer" style="width:auto"></select></div>
+      <div id="sweepChart"></div>
+      <p class="hint">Dots on the dashed diagonal = the layer gets the distance exactly right. Grey squares show
+        the clip's loudness (right axis), the cue that disappears when you tick "normalize loudness".</p>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const state = { tab: "distance", info: null, seq: 0, sweep: null };
+const BIN_LABELS = { distance: ["< 1 m", "1-3 m", "3-6 m", "> 6 m"] };
+
+// ---- control definitions per tab ----------------------------------------------------
+const CONTROLS = {
+  distance: [
+    { id: "distance", label: "Distance source to mic", min: 0.5, max: 10, step: 0.1, value: 2, unit: "m", log: true },
+    { id: "room_l", label: "Room length", min: 3, max: 25, step: 0.5, value: 12, unit: "m" },
+    { id: "room_w", label: "Room width", min: 3, max: 20, step: 0.5, value: 9, unit: "m" },
+    { id: "room_h", label: "Room height", min: 2.5, max: 6, step: 0.1, value: 3.2, unit: "m" },
+    { id: "absorption", label: "Wall absorption (0 = echoey, 1 = dead)", min: 0.05, max: 0.9, step: 0.01, value: 0.3, unit: "" },
+  ],
+  pitch: [
+    { id: "f0", label: "Fundamental frequency", min: 80, max: 1200, step: 1, value: 220, unit: "Hz", log: true },
+    { id: "decay", label: "Timbre: harmonic roll-off (0 = bright, 2 = mellow)", min: 0, max: 2.5, step: 0.05, value: 1, unit: "" },
+  ],
+  highband: [
+    { id: "band_level", label: "Level of the 9-15 kHz hiss (the label)", min: -60, max: -10, step: 1, value: -20, unit: "dBFS" },
+    { id: "base_level", label: "Level of the audible content below 7 kHz", min: -40, max: -10, step: 1, value: -25, unit: "dBFS" },
+  ],
+};
+const EXPLAIN = {
+  distance: `A shoebox room is simulated with the image-source method (every wall reflection = a mirrored copy of the
+    source). Two cues change with distance: the direct sound gets quieter (1/d), and the room's echo takes over
+    (lower direct-to-reverb ratio). Tick <b>normalize loudness</b> to remove the first cue and see what is left.`,
+  pitch: `A note made of harmonics at whole multiples of the fundamental. The probes were trained on 100-1000 Hz;
+    try going outside that range to see them extrapolate (or fail).`,
+  highband: `This is the negative control. The hiss lives at 9-15 kHz, but Whisper only ever sees audio resampled to
+    16 kHz, which cannot hold anything above 8 kHz. So no layer should be able to track the slider: the blue line
+    should stay flat while the orange truth line moves.`,
+  file: `Pick a sound that ships with macOS, or upload any audio file (wav, aiff, m4a, mp3). Only the first 5 seconds
+    are used. The probes were trained on synthetic clips, so real sounds are out of their comfort zone; treat the
+    answers as curiosities.`,
+};
+
+function sliderValue(c, raw) {  // log sliders map 0..1000 onto min..max logarithmically
+  return c.log ? c.min * Math.pow(c.max / c.min, raw / 1000) : Number(raw);
+}
+function sliderRaw(c, v) { return c.log ? 1000 * Math.log(v / c.min) / Math.log(c.max / c.min) : v; }
+function fmt(v, digits = 2) { return Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(digits); }
+
+function renderControls() {
+  const tab = state.tab, box = $("#controls");
+  let html = `<h2>${$("#tabs .on").textContent}</h2><p class="hint">${EXPLAIN[tab]}</p>`;
+  if (tab === "file") {
+    const opts = (state.info?.system_sounds || []).map(p => `<option value="${p}">${p.split("/").pop()}</option>`).join("");
+    html += `<h3>macOS system sound</h3><select id="sysSound">${opts}</select>
+      <div class="row" style="margin-top:8px"><button class="btn primary" id="runSys">Probe it</button></div>
+      <h3>Or upload a file</h3><input type="file" id="upload" accept="audio/*">
+      <h3>Distance probes</h3><label class="hint"><input type="checkbox" id="norm"> use the loudness-normalized probes</label>`;
+    box.innerHTML = html;
+    $("#runSys").onclick = () => runFile({ path: $("#sysSound").value });
+    $("#upload").onchange = (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => runFile({ b64: reader.result.split(",")[1], name: f.name });
+      reader.readAsDataURL(f);
+    };
+    return;
+  }
+  for (const c of CONTROLS[tab]) {
+    html += `<div class="ctl"><label>${c.label}<b id="v_${c.id}"></b></label>
+      <input type="range" id="${c.id}" min="${c.log ? 0 : c.min}" max="${c.log ? 1000 : c.max}"
+        step="${c.log ? 1 : c.step}" value="${sliderRaw(c, c.value)}"></div>`;
+  }
+  if (tab === "distance") {
+    const voices = (state.info?.voices || []).map(v => `<option value="say:${v}">macOS voice: ${v}</option>`).join("");
+    const spk = (state.info?.speakers || []).slice(0, 40).map(s => `<option value="speech:${s}">LibriSpeech speaker ${s}</option>`).join("");
+    html += `<div class="ctl"><label>Sound source</label><select id="source">
+        <option value="speech">Speech (LibriSpeech, varies with seed)</option><option value="noise">Noise bursts</option>
+        <option value="tone">Harmonic tone</option>${voices}${spk}</select></div>
+      <label class="hint"><input type="checkbox" id="norm"> normalize loudness (every clip at -20 dBFS)</label>`;
+  }
+  html += `<div class="row" style="margin-top:12px">
+      <button class="btn" id="reseed">New random ${tab === "distance" ? "placement + source" : "timbre"}</button>
+      ${tab === "distance" ? '<button class="btn primary" id="sweepBtn">Sweep 0.5 to 10 m</button>' : ""}</div>
+    <p class="hint" id="seedNote"></p>`;
+  box.innerHTML = html;
+  for (const c of CONTROLS[tab]) {
+    const el = $("#" + c.id);
+    const show = () => { $("#v_" + c.id).textContent = `${fmt(sliderValue(c, el.value))} ${c.unit}`; };
+    show();
+    el.oninput = () => { show(); schedule(); };
+  }
+  box.querySelectorAll("select, input[type=checkbox]").forEach(el => el.onchange = schedule);
+  $("#reseed").onclick = () => { state.seed = Math.floor(Math.random() * 1e6); schedule(0); };
+  if ($("#sweepBtn")) $("#sweepBtn").onclick = runSweep;
+}
+
+function params() {
+  const p = { seed: state.seed || 0 };
+  for (const c of CONTROLS[state.tab] || []) p[c.id] = sliderValue(c, $("#" + c.id).value);
+  if ($("#source")) p.source = $("#source").value;
+  p.condition = $("#norm")?.checked ? "loudness_normalized" : "raw";
+  return p;
+}
+
+// ---- talking to the server ----------------------------------------------------------
+let timer = null;
+function schedule(delay = 350) { clearTimeout(timer); timer = setTimeout(run, delay); }
+
+async function post(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+async function run() {
+  const my = ++state.seq;
+  document.querySelector(".results").classList.add("busy");
+  try {
+    const p = params();
+    const data = await post("/api/run", { kind: state.tab, params: p });
+    if (my !== state.seq) return;  // a newer request is on its way; drop this one
+    showClip(data, p);
+    const key = `${state.tab}/${p.condition}`;
+    drawLayerChart(data.predictions[key] || data.predictions[`${state.tab}/raw`], data.label, state.tab);
+  } catch (e) {
+    if (my === state.seq) $("#clipBody").innerHTML = `<div class="err">${e.message}</div>`;
+  } finally {
+    if (my === state.seq) document.querySelector(".results").classList.remove("busy");
+  }
+}
+
+async function runFile(body) {
+  const my = ++state.seq;
+  document.querySelector(".results").classList.add("busy");
+  try {
+    body.condition = $("#norm")?.checked ? "loudness_normalized" : "raw";
+    const data = await post("/api/file", body);
+    if (my !== state.seq) return;
+    showClip(data, {});
+    drawFileCharts(data.predictions);
+  } catch (e) {
+    $("#clipBody").innerHTML = `<div class="err">${e.message}</div>`;
+  } finally {
+    document.querySelector(".results").classList.remove("busy");
+  }
+}
+
+async function runSweep() {
+  const p = params();
+  const ds = [0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 6.5, 8, 10];
+  $("#sweepPanel").classList.remove("hidden");
+  $("#sweepChart").innerHTML = `<p class="hint">Simulating ${ds.length} clips...</p>`;
+  try {
+    state.sweep = { rows: await post("/api/sweep", { params: p, distances: ds }), key: `distance/${p.condition}` };
+    const sel = $("#sweepLayer");
+    if (!sel.options.length) {
+      for (let i = 0; i < 13; i++) sel.add(new Option(`layer ${i}`, i));
+      sel.value = 4; sel.onchange = drawSweep;
+    }
+    drawSweep();
+  } catch (e) { $("#sweepChart").innerHTML = `<div class="err">${e.message}</div>`; }
+}
+
+// ---- rendering ----------------------------------------------------------------------
+let boostCtx = null, boostGain = null;
+function showClip(data, p) {
+  const extra = Object.entries(data.extra || {}).map(([k, v]) => `<span class="stat">${k.replaceAll("_", " ")}: <b>${Array.isArray(v) ? v.join(", ") : v}</b></span>`).join("");
+  $("#clipBody").innerHTML = `
+    <audio id="player" controls src="data:audio/wav;base64,${data.wav_b64}"></audio>
+    <div class="row"><button class="btn" id="boost">Boost x10 (playback only)</button>
+      <span class="stat">level <b>${data.rms_dbfs} dBFS</b></span><span class="stat">peak <b>${data.peak}</b></span>
+      ${data.label !== undefined ? `<span class="stat">true value <b>${fmt(data.label)}</b></span>` : ""}</div>
+    <img class="spec" src="data:image/png;base64,${data.spec_b64}" alt="log-mel spectrogram">
+    <p class="hint">Log-mel spectrogram, what Whisper's encoder receives: time across 5 s, 0 Hz at the bottom to 8 kHz at the top.</p>
+    <div>${extra}</div>`;
+  boostCtx = null;
+  $("#boost").onclick = () => {
+    const el = $("#player");
+    if (!boostCtx) { boostCtx = new AudioContext(); const src = boostCtx.createMediaElementSource(el);
+      boostGain = boostCtx.createGain(); src.connect(boostGain).connect(boostCtx.destination); }
+    boostGain.gain.value = boostGain.gain.value > 1 ? 1 : 10;
+    $("#boost").textContent = boostGain.gain.value > 1 ? "Boost on (x10)" : "Boost x10 (playback only)";
+    el.play();
+  };
+}
+
+const UNITS = { distance: "m", pitch: "Hz", highband: "dBFS" };
+const RANGES = { distance: [0.3, 15], pitch: [60, 1600], highband: [-70, 0] };
+
+function svgChart({ width = 760, height = 280, xs, xLabel, yLabel, logX = false, logY, yRange, lines = [], points = [], bands = [], y2 = null }) {
+  const m = { l: 56, r: y2 ? 56 : 16, t: 12, b: 38 };
+  const W = width - m.l - m.r, H = height - m.t - m.b;
+  const tx = (v) => logX ? Math.log(v) : v;
+  const [x0, x1] = [tx(xs[0]), tx(xs[xs.length - 1])];
+  const ty = (v) => logY ? Math.log(v) : v;
+  const [y0, y1] = yRange.map(ty);
+  const X = (v) => m.l + (tx(v) - x0) / (x1 - x0 || 1) * W;
+  const Y = (v) => m.t + H - (Math.min(Math.max(ty(v), y0), y1) - y0) / (y1 - y0) * H;
+  let s = `<svg viewBox="0 0 ${width} ${height}" width="100%" style="max-width:${width}px">`;
+  for (const b of bands) s += `<rect x="${m.l}" width="${W}" y="${Y(b.hi)}" height="${Math.max(0, Y(b.lo) - Y(b.hi))}" fill="${b.fill}"/>`
+    + (b.label ? `<text x="${m.l + W - 4}" y="${Y(b.hi) + 12}" text-anchor="end">${b.label}</text>` : "");
+  const ticks = logY ? niceLogTicks(yRange) : niceTicks(yRange);
+  for (const t of ticks) s += `<line x1="${m.l}" x2="${m.l + W}" y1="${Y(t)}" y2="${Y(t)}" stroke="#eee"/><text x="${m.l - 6}" y="${Y(t) + 4}" text-anchor="end">${fmt(t, t < 1 ? 1 : 0)}</text>`;
+  for (const x of xs) s += `<text x="${X(x)}" y="${m.t + H + 16}" text-anchor="middle">${fmt(x, x < 1 ? 2 : 1).replace(/\.0+$/, "")}</text>`;
+  s += `<text x="${m.l + W / 2}" y="${height - 4}" text-anchor="middle">${xLabel}</text>`;
+  s += `<text transform="translate(14 ${m.t + H / 2}) rotate(-90)" text-anchor="middle">${yLabel}</text>`;
+  for (const ln of lines) {
+    const pts = ln.pts.filter(p => p[1] !== null).map(p => `${X(p[0])},${Y(p[1])}`).join(" ");
+    s += `<polyline points="${pts}" fill="none" stroke="${ln.color}" stroke-width="${ln.width || 2}" ${ln.dash ? `stroke-dasharray="${ln.dash}"` : ""}/>`;
+  }
+  for (const p of points) s += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="${p.r || 4}" fill="${p.color}"><title>${p.title || ""}</title></circle>`;
+  if (y2) {
+    const Y2 = (v) => m.t + H - (v - y2.range[0]) / (y2.range[1] - y2.range[0]) * H;
+    for (const p of y2.pts) s += `<rect x="${X(p[0]) - 3}" y="${Y2(p[1]) - 3}" width="6" height="6" fill="#aaa"><title>${p[1]} dBFS</title></rect>`;
+    for (const t of niceTicks(y2.range)) s += `<text x="${m.l + W + 6}" y="${Y2(t) + 4}">${t}</text>`;
+    s += `<text transform="translate(${width - 10} ${m.t + H / 2}) rotate(90)" text-anchor="middle">${y2.label}</text>`;
+  }
+  return s + "</svg>";
+}
+function niceTicks([a, b]) { const step = Math.pow(10, Math.floor(Math.log10((b - a) / 4))) * ([1, 2, 5].find(k => (b - a) / (Math.pow(10, Math.floor(Math.log10((b - a) / 4))) * k) <= 6) || 10); const out = []; for (let v = Math.ceil(a / step) * step; v <= b + 1e-9; v += step) out.push(+v.toFixed(6)); return out; }
+function niceLogTicks([a, b]) { const out = []; for (let e = Math.floor(Math.log10(a)); e <= Math.ceil(Math.log10(b)); e++) for (const k of [1, 2, 5]) { const v = k * Math.pow(10, e); if (v >= a && v <= b) out.push(v); } return out; }
+
+function binBands(kind) {
+  const edges = state.info?.bins?.[kind]; if (!edges) return [];
+  const [lo, hi] = RANGES[kind], all = [lo, ...edges, hi], letters = "ABCD";
+  return all.slice(0, -1).map((v, i) => ({ lo: v, hi: all[i + 1], fill: i % 2 ? "rgba(0,0,0,0.035)" : "rgba(0,0,0,0)", label: `bin ${letters[i]}` }));
+}
+
+function drawLayerChart(rows, truth, kind) {
+  const layers = rows.map(r => r.layer);
+  $("#chartTitle").textContent = `What each layer thinks the ${kind === "highband" ? "hiss level" : kind} is`;
+  $("#legend").innerHTML = `<span><i style="background:var(--accent)"></i>probe prediction per layer</span>
+    <span><i style="background:var(--truth)"></i>true value</span><span>shaded = the 4 multiple-choice bins</span>`;
+  $("#chart").innerHTML = svgChart({
+    xs: layers, xLabel: "Whisper encoder layer (0 = input embeddings, 12 = last)", yLabel: `${kind} (${UNITS[kind]})`,
+    logY: kind !== "highband", yRange: RANGES[kind], bands: binBands(kind),
+    lines: [{ pts: layers.map(l => [l, truth]), color: "var(--truth)", dash: "6 4" },
+            { pts: rows.map(r => [r.layer, r.value]), color: "var(--accent)" }],
+    points: rows.map(r => ({ x: r.layer, y: r.value, color: "var(--accent)", title: `layer ${r.layer}: ${fmt(r.value)} ${UNITS[kind]}` })),
+  });
+  const best = rows.reduce((a, r) => Math.abs(Math.log(Math.abs(r.value) + 1e-9) - Math.log(Math.abs(truth) + 1e-9)) <
+    Math.abs(Math.log(Math.abs(a.value) + 1e-9) - Math.log(Math.abs(truth) + 1e-9)) ? r : a);
+  $("#chartHint").textContent = `Closest layer for this clip: ${best.layer} (${fmt(best.value)} ${UNITS[kind]} vs true ${fmt(truth)}).` +
+    (kind === "highband" ? " Move the hiss slider: the blue line should barely change." : "");
+  $("#table").innerHTML = `<table><tr><th>layer</th><th>prediction</th><th>bin guess</th><th>bin confidence</th></tr>` +
+    rows.map(r => `<tr><td>${r.layer}</td><td>${fmt(r.value)}</td><td>${"ABCD"[r.bin]}</td><td>${r.bin_probs ? (100 * Math.max(...r.bin_probs)).toFixed(0) + "%" : ""}</td></tr>`).join("") + "</table>";
+}
+
+function drawFileCharts(preds) {
+  $("#chartTitle").textContent = "What each layer's probes say about your sound";
+  $("#legend").innerHTML = `<span><i style="background:var(--accent)"></i>prediction per layer (no true value for real sounds)</span>`;
+  let html = "";
+  for (const [key, rows] of Object.entries(preds)) {
+    const kind = key.split("/")[0];
+    html += `<h3>${key}</h3>` + svgChart({ height: 200, xs: rows.map(r => r.layer), xLabel: "layer", yLabel: UNITS[kind],
+      logY: kind !== "highband", yRange: RANGES[kind], bands: binBands(kind),
+      lines: [{ pts: rows.map(r => [r.layer, r.value]), color: "var(--accent)" }],
+      points: rows.map(r => ({ x: r.layer, y: r.value, color: "var(--accent)", title: `${fmt(r.value)}` })) });
+  }
+  $("#chart").innerHTML = html;
+  $("#chartHint").textContent = "The probes were trained on synthetic clips. Disagreement between layers is itself informative.";
+  $("#table").innerHTML = "";
+}
+
+function drawSweep() {
+  const { rows, key } = state.sweep, layer = Number($("#sweepLayer").value);
+  const ok = rows.filter(r => !r.error);
+  const errs = rows.filter(r => r.error).map(r => r.distance);
+  const xs = rows.map(r => r.distance);
+  $("#sweepChart").innerHTML = svgChart({
+    xs, xLabel: "true distance (m, log scale)", yLabel: "predicted distance (m)", logX: true, logY: true, yRange: [0.4, 12],
+    lines: [{ pts: xs.map(x => [x, x]), color: "var(--truth)", dash: "6 4", width: 1.5 },
+            { pts: ok.map(r => [r.distance, r.predictions[key][layer].value]), color: "var(--accent)" }],
+    points: ok.map(r => ({ x: r.distance, y: r.predictions[key][layer].value, color: "var(--accent)",
+      title: `true ${r.distance} m, predicted ${fmt(r.predictions[key][layer].value)} m` })),
+    y2: { pts: ok.map(r => [r.distance, r.rms_dbfs]), range: [-70, -10], label: "clip level (dBFS)" },
+  }) + (errs.length ? `<p class="hint">Did not fit in this room: ${errs.join(", ")} m. Make the room bigger to cover them.</p>` : "");
+}
+
+// ---- tabs + boot --------------------------------------------------------------------
+$("#tabs").onclick = (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("on", x === b));
+  state.tab = b.dataset.tab; state.seed = 0;
+  $("#sweepPanel").classList.toggle("hidden", true);
+  renderControls();
+  if (state.tab !== "file") schedule(0);
+  else { $("#clipBody").innerHTML = '<p class="hint">Pick a sound on the left.</p>'; $("#chart").innerHTML = ""; $("#legend").innerHTML = ""; $("#chartHint").textContent = ""; }
+};
+
+(async () => {
+  state.info = await (await fetch("/api/info")).json();
+  renderControls();
+  schedule(0);
+})();
+</script>
+</body>
+</html>

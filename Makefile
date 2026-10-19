@@ -19,7 +19,7 @@ RUN_CMD := uv run python -m audio_probes
 OVERRIDES := $(filter-out PROPERTY=% CONDITION=% CLIP=% RUN=% FILE=% BOOST=%,$(MAKEOVERRIDES))
 COND_FLAG := $(if $(CONDITION),--condition $(CONDITION),)
 
-.PHONY: all data embed probe llm report inspect predict play test config download-librispeech
+.PHONY: all data embed probe llm report inspect predict play demo test config download-librispeech
 
 all: data embed probe llm report
 
@@ -37,6 +37,10 @@ predict:
 
 play:
 	$(RUN_CMD) play --property $(PROPERTY) $(COND_FLAG) --clip $(CLIP) --boost-db $(BOOST) $(OVERRIDES)
+
+# Interactive lab on http://127.0.0.1:8770 (needs `make all` first; ~1.5 GB while running)
+demo:
+	$(RUN_CMD).demo
 
 config:
 	$(RUN_CMD) show-config --property $(PROPERTY) $(OVERRIDES)
