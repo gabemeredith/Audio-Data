@@ -257,7 +257,7 @@ function showClip(data, p) {
       ${data.label !== undefined ? `<span class="stat">true value <b>${fmt(data.label)}</b></span>` : ""}</div>
     <img class="spec" src="data:image/png;base64,${data.spec_b64}" alt="log-mel spectrogram">
     <p class="hint">Log-mel spectrogram, what Whisper's encoder receives: time across 5 s, 0 Hz at the bottom to 8 kHz at the top.</p>
-    <div>${extra}</div>`;
+    ${extra ? `<h3>Simulation facts (ground truth from the simulator, not predicted by Whisper)</h3><div>${extra}</div>` : ""}`;
   boostCtx = null;
   $("#boost").onclick = () => {
     const el = $("#player");
